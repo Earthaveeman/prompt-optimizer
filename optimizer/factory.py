@@ -9,12 +9,19 @@ from .openai_provider import OpenAIOptimizer
 # ── Public data types ──────────────────────────────────────────────
 
 @dataclass
-class ProviderInfo:
-    """One selectable option in the UI: a provider + model combination."""
-    provider: str       # e.g. "deepseek"
-    model_id: str       # e.g. "deepseek-v4-flash"
-    label: str          # e.g. "DeepSeek · V4 Flash"
+class ModelInfo:
+    """A single model under a provider."""
+    id: str             # e.g. "openai/gpt-oss-120b"
+    label: str          # e.g. "GPT-OSS 120B"
+
+
+@dataclass
+class ProviderGroup:
+    """A provider with its available models (for two-level UI)."""
+    key: str                            # e.g. "nvidia"
+    label: str                          # e.g. "NVIDIA NIM"
     configured: bool
+    models: list[ModelInfo]
 
 
 # ── Internal config ─────────────────────────────────────────────────
@@ -62,28 +69,25 @@ _providers: dict[str, _ProviderDef] = {
 
 # ── Public API ──────────────────────────────────────────────────────
 
-def list_providers() -> list[ProviderInfo]:
-    """Return every provider × model combination that is available."""
-    result: list[ProviderInfo] = []
+def list_provider_groups() -> list[ProviderGroup]:
+    """Return providers grouped with their models — for two-level UI."""
+    result: list[ProviderGroup] = []
     for pkey, pdef in _providers.items():
         api_key_env = f"{pdef.env_prefix}_API_KEY"
         configured = bool(os.getenv(api_key_env))
 
         models = pdef.models
         if models is None:
-            # Single model — read from env var
             model_env = f"{pdef.env_prefix}_MODEL"
             default_model = os.getenv(model_env, "unknown")
             models = [_ModelDef(id=default_model)]
 
-        for m in models:
-            label = m.label or m.id
-            result.append(ProviderInfo(
-                provider=pkey,
-                model_id=m.id,
-                label=f"{pdef.label} · {label}",
-                configured=configured,
-            ))
+        result.append(ProviderGroup(
+            key=pkey,
+            label=pdef.label,
+            configured=configured,
+            models=[ModelInfo(id=m.id, label=m.label or m.id) for m in models],
+        ))
     return result
 
 

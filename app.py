@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from optimizer import get_optimizer, list_providers
+from optimizer import get_optimizer, list_provider_groups
 
 # Load .env from project root
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -44,15 +44,15 @@ async def index(request: Request):
 
 @app.get("/api/providers")
 async def get_providers():
-    """List available provider × model combinations."""
+    """List providers grouped with their models (two-level UI)."""
     return [
         {
-            "provider": p.provider,
-            "model_id": p.model_id,
-            "label": p.label,
-            "configured": p.configured,
+            "provider": g.key,
+            "label": g.label,
+            "configured": g.configured,
+            "models": [{"id": m.id, "label": m.label} for m in g.models],
         }
-        for p in list_providers()
+        for g in list_provider_groups()
     ]
 
 
