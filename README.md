@@ -57,23 +57,28 @@ cp .env.example .env
 编辑 `.env`，填入至少一个提供商的 API Key：
 
 ```bash
-# 选择默认提供商
+# 默认提供商
 LLM_PROVIDER=deepseek
 
-# DeepSeek
+# DeepSeek（单模型）
 DEEPSEEK_API_KEY=sk-your-key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-v4-flash
 
-# ModelScope
+# NVIDIA（多模型，用 MODELS 逗号分隔）
+NVIDIA_API_KEY=nvapi-your-key
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODELS=openai/gpt-oss-120b:GPT-OSS 120B,stepfun-ai/step-3.7-flash:Step 3.7 Flash
+
+# ModelScope（单模型）
 MODELSCOPE_API_KEY=ms-your-key
 MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
 MODELSCOPE_MODEL=stepfun-ai/Step-3.7-Flash
-
-# Claude
-ANTHROPIC_API_KEY=sk-ant-your-key
-ANTHROPIC_MODEL=claude-sonnet-4-6
 ```
+
+模型配置规则：
+- 设置 `{PREFIX}_MODELS`（格式 `模型ID:标签,模型ID:标签`）→ 多模型
+- 没设置 `MODELS` → 回退读 `{PREFIX}_MODEL` → 单模型
 
 ### 3. 安装依赖
 
@@ -206,44 +211,30 @@ https://your-server.com/prompt-optimizer/
 
 ## 添加新提供商
 
-在 `optimizer/factory.py` 的 `_providers` 表中添加一行，再在 `.env` 中配好 Key 即可。前端自动发现。
+两步完成：
 
-**单模型提供商**（模型从环境变量读取）：
+**1. 在 `optimizer/factory.py` 中注册**（一行）：
 
 ```python
 _providers = {
-    "groq": _ProviderDef(
-        label="Groq",
-        env_prefix="GROQ",
-    ),
+    # ...existing...
+    "groq": _ProviderDef(label="Groq", env_prefix="GROQ"),
 }
 ```
+
+**2. 在 `.env` 中配置**：
 
 ```bash
-# .env
 GROQ_API_KEY=gsk-your-key
 GROQ_BASE_URL=https://api.groq.com/openai/v1
-GROQ_MODEL=llama-3.1-70b-versatile
+GROQ_MODELS=llama-3.1-70b-versatile:LLaMA 70B,mixtral-8x7b:Mixtral 8x7B
 ```
 
-**多模型提供商**（模型在工厂中声明）：
+模型全部在 ENV 中管理：
+- `{PREFIX}_MODELS=id:标签,id:标签` → 多模型
+- `{PREFIX}_MODEL=id` → 单模型（`MODELS` 未设置时的回退）
 
-```python
-from optimizer.factory import _ModelDef
-
-_providers = {
-    "nvidia": _ProviderDef(
-        label="NVIDIA NIM",
-        env_prefix="NVIDIA",
-        models=[
-            _ModelDef(id="openai/gpt-oss-120b", label="GPT-OSS 120B"),
-            _ModelDef(id="stepfun-ai/step-3.7-flash", label="Step 3.7 Flash"),
-        ],
-    ),
-}
-```
-
-前提是目标服务使用 OpenAI 兼容 API（绝大多数国产模型和代理都兼容）。
+前端自动发现新提供商。前提是目标服务使用 OpenAI 兼容 API。
 
 ## 优化原理
 

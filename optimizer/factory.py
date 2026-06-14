@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .base import OptimizerBase
 from .claude_provider import ClaudeOptimizer
@@ -27,19 +27,16 @@ class ProviderGroup:
 # ── Internal config ─────────────────────────────────────────────────
 
 @dataclass
-class _ModelDef:
-    """A model offered by a provider."""
-    id: str
-    label: str = ""     # short display label; derived from id if omitted
-
-
-@dataclass
 class _ProviderDef:
-    """Internal definition for a provider."""
+    """Internal definition for a provider.
+
+    Models are NOT hardcoded here — they are read from env vars:
+      {PREFIX}_MODELS  → comma-separated "id:label" pairs (multi-model)
+      {PREFIX}_MODEL   → fallback single model
+    """
     label: str                          # e.g. "NVIDIA NIM"
-    env_prefix: str                     # e.g. "NVIDIA" → reads NVIDIA_API_KEY, NVIDIA_BASE_URL
+    env_prefix: str                     # e.g. "NVIDIA" → reads NVIDIA_API_KEY, NVIDIA_BASE_URL, NVIDIA_MODELS
     cls: type = OpenAIOptimizer         # which class to instantiate
-    models: list[_ModelDef] | None = None  # None → read single model from {PREFIX}_MODEL env
 
 
 _providers: dict[str, _ProviderDef] = {
@@ -59,12 +56,40 @@ _providers: dict[str, _ProviderDef] = {
     "nvidia": _ProviderDef(
         label="NVIDIA NIM",
         env_prefix="NVIDIA",
-        models=[
-            _ModelDef(id="openai/gpt-oss-120b", label="GPT-OSS 120B"),
-            _ModelDef(id="stepfun-ai/step-3.7-flash", label="Step 3.7 Flash"),
-        ],
     ),
 }
+
+
+# ── Model resolution from env ───────────────────────────────────────
+
+def _parse_models(prefix: str) -> list[ModelInfo]:
+    """Parse model list from {PREFIX}_MODELS or fall back to {PREFIX}_MODEL.
+
+    {PREFIX}_MODELS format:  "id1:Label 1,id2:Label 2,id3"
+      - Each entry is "id" or "id:label"
+      - Commas separate entries
+      - If label is omitted, id is used as label
+
+    Falls back to {PREFIX}_MODEL for backward compatibility.
+    """
+    models_str = os.getenv(f"{prefix}_MODELS", "")
+    if models_str:
+        models: list[ModelInfo] = []
+        for entry in models_str.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if ":" in entry:
+                mid, _, mlabel = entry.partition(":")
+                models.append(ModelInfo(id=mid.strip(), label=mlabel.strip()))
+            else:
+                models.append(ModelInfo(id=entry, label=entry))
+        if models:
+            return models
+
+    # Fallback: single model from {PREFIX}_MODEL
+    single = os.getenv(f"{prefix}_MODEL", "unknown")
+    return [ModelInfo(id=single, label=single)]
 
 
 # ── Public API ──────────────────────────────────────────────────────
@@ -75,18 +100,11 @@ def list_provider_groups() -> list[ProviderGroup]:
     for pkey, pdef in _providers.items():
         api_key_env = f"{pdef.env_prefix}_API_KEY"
         configured = bool(os.getenv(api_key_env))
-
-        models = pdef.models
-        if models is None:
-            model_env = f"{pdef.env_prefix}_MODEL"
-            default_model = os.getenv(model_env, "unknown")
-            models = [_ModelDef(id=default_model)]
-
         result.append(ProviderGroup(
             key=pkey,
             label=pdef.label,
             configured=configured,
-            models=[ModelInfo(id=m.id, label=m.label or m.id) for m in models],
+            models=_parse_models(pdef.env_prefix),
         ))
     return result
 
@@ -97,7 +115,6 @@ def get_optimizer(provider: str | None = None, model: str | None = None) -> Opti
     Args:
         provider: Provider key (e.g. 'nvidia').
         model: Model ID (e.g. 'openai/gpt-oss-120b').
-               If None, reads {PREFIX}_MODEL from env.
 
     Raises:
         ValueError: Unknown provider or missing API key.
@@ -115,9 +132,10 @@ def get_optimizer(provider: str | None = None, model: str | None = None) -> Opti
     pdef = _providers[provider]
     prefix = pdef.env_prefix
 
-    # Resolve model
+    # Resolve model: use provided or take the first from the configured list
     if model is None:
-        model = os.getenv(f"{prefix}_MODEL", "unknown")
+        models = _parse_models(prefix)
+        model = models[0].id if models else "unknown"
 
     # Claude uses its own class
     if pdef.cls is ClaudeOptimizer:
