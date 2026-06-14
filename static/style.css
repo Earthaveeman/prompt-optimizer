@@ -48,62 +48,20 @@ header h1 {
     margin-bottom: 20px;
 }
 
-/* ===== Model Picker (two-level) ===== */
+/* ===== Model Picker ===== */
 .model-picker {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 12px;
-}
-
-/* Provider chips row */
-.provider-chips {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
     justify-content: center;
-}
-
-.provider-chip {
-    padding: 8px 18px;
-    border: 1.5px solid var(--border);
-    border-radius: 20px;
-    background: var(--surface);
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    font-family: inherit;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    outline: none;
-    white-space: nowrap;
-}
-
-.provider-chip:hover:not(.disabled) {
-    border-color: var(--primary);
-    color: var(--primary);
-    background: #f8f7ff;
-}
-
-.provider-chip.active {
-    background: var(--primary);
-    color: #fff;
-    border-color: var(--primary);
-    box-shadow: 0 2px 8px rgba(108, 92, 231, 0.3);
-}
-
-.provider-chip.disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-    text-decoration: line-through;
-    text-decoration-color: var(--text-muted);
-}
-
-/* Model dropdown row */
-.model-row {
-    display: flex;
-    align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+}
+
+.picker-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .model-select {
@@ -121,17 +79,21 @@ header h1 {
     background-repeat: no-repeat;
     background-position: right 10px center;
     transition: border-color 0.2s;
-    min-width: 200px;
-    text-align: center;
+    min-width: 240px;
 }
 
 .model-select:focus {
     border-color: var(--primary);
 }
 
-.model-select:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+.model-select optgroup {
+    font-weight: 600;
+    font-style: normal;
+    color: var(--text);
+}
+
+.model-select option {
+    padding: 6px 10px;
 }
 
 .provider-status {
@@ -322,11 +284,8 @@ textarea:focus {
         font-size: 1.5rem;
     }
 
-    .provider-chips {
-        gap: 5px;
-    }
-    .provider-chip {
-        padding: 6px 14px;
-        font-size: 0.8rem;
+    .model-picker {
+        flex-direction: column;
+        gap: 6px;
     }
 }
