@@ -9,7 +9,7 @@ from .base import OPTIMIZER_SYSTEM_PROMPT, OptimizerBase
 class ClaudeOptimizer(OptimizerBase):
     """Prompt optimizer using Anthropic Claude API."""
 
-    def __init__(self) -> None:
+    def __init__(self, model: str | None = None) -> None:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
@@ -19,14 +19,13 @@ class ClaudeOptimizer(OptimizerBase):
             api_key=api_key,
             **(dict(base_url=base_url) if base_url else {}),
         )
-        self._model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+        self._model = model or os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
     @property
     def provider_name(self) -> str:
         return f"Claude ({self._model})"
 
     async def optimize(self, text: str) -> str:
-        # Anthropic SDK is synchronous; run in thread pool for async compatibility.
         return await asyncio.to_thread(self._optimize_sync, text)
 
     def _optimize_sync(self, text: str) -> str:

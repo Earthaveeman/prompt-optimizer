@@ -75,28 +75,30 @@
         const providerStatus = document.getElementById('provider-status');
 
         let currentProvider = null;
+        let currentModel = null;
 
         // --- Load providers on startup ---
         async function loadProviders() {
             try {
                 const res = await fetch('/api/providers');
-                const providers = await res.json();
+                const options = await res.json();
                 providerSelect.innerHTML = '';
 
                 let firstAvailable = null;
-                providers.forEach(p => {
+                options.forEach(p => {
                     const opt = document.createElement('option');
-                    opt.value = p.key;
+                    opt.value = p.provider + '||' + p.model_id;
                     opt.textContent = p.label + (p.configured ? '' : '（未配置）');
                     opt.disabled = !p.configured;
                     providerSelect.appendChild(opt);
-                    if (p.configured && !firstAvailable) firstAvailable = p.key;
+                    if (p.configured && !firstAvailable) firstAvailable = opt.value;
                 });
 
                 if (firstAvailable) {
                     providerSelect.value = firstAvailable;
-                    currentProvider = firstAvailable;
-                    updateProviderStatus(providers.find(p => p.key === firstAvailable));
+                    selectOption(firstAvailable);
+                    providerStatus.textContent = '✓ 已就绪';
+                    providerStatus.className = 'provider-status ok';
                 } else {
                     providerStatus.textContent = '⚠ 无可用模型，请配置 API Key';
                     providerStatus.className = 'provider-status error';
@@ -107,17 +109,14 @@
             }
         }
 
-        function updateProviderStatus(p) {
-            if (p && p.configured) {
-                providerStatus.textContent = '✓ 已就绪';
-                providerStatus.className = 'provider-status ok';
-                currentProvider = p.key;
-            }
+        function selectOption(value) {
+            const [p, m] = value.split('||');
+            currentProvider = p;
+            currentModel = m;
         }
 
         providerSelect.addEventListener('change', () => {
-            currentProvider = providerSelect.value;
-            const selectedOpt = providerSelect.selectedOptions[0];
+            selectOption(providerSelect.value);
             providerStatus.textContent = currentProvider ? '✓ 已就绪' : '';
             providerStatus.className = currentProvider ? 'provider-status ok' : 'provider-status';
         });
@@ -147,7 +146,10 @@
 
             try {
                 const body = { text };
-                if (currentProvider) body.provider = currentProvider;
+                if (currentProvider) {
+                    body.provider = currentProvider;
+                    body.model = currentModel;
+                }
 
                 const res = await fetch('/api/optimize', {
                     method: 'POST',

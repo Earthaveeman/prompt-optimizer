@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from optimizer import get_optimizer, list_providers
 
 # Load .env from project root
-load_dotenv(Path(__file__).parent / ".env")
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 app = FastAPI(title="Prompt Optimizer", version="1.0.0")
 
@@ -24,13 +24,14 @@ if static_dir.exists():
 # --- Request / Response models ---
 
 class OptimizeRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=10000, description="The raw prompt to optimize")
-    provider: str | None = Field(None, description="Which LLM provider to use (overrides .env default)")
+    text: str = Field(..., min_length=1, max_length=10000)
+    provider: str | None = Field(None, description="Provider key, e.g. 'nvidia'")
+    model: str | None = Field(None, description="Model ID, e.g. 'openai/gpt-oss-120b'")
 
 
 class OptimizeResponse(BaseModel):
-    optimized: str = Field(..., description="The optimized prompt")
-    provider: str = Field(..., description="Which LLM provider was used")
+    optimized: str
+    provider: str
 
 
 # --- Routes ---
@@ -38,23 +39,27 @@ class OptimizeResponse(BaseModel):
 @app.get("/", include_in_schema=False)
 async def index(request: Request):
     """Serve the web UI."""
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={},
-    )
+    return templates.TemplateResponse(request=request, name="index.html", context={})
 
 
 @app.get("/api/providers")
 async def get_providers():
-    """List available providers and their configuration status."""
-    return [{"key": p.key, "label": p.label, "configured": p.configured} for p in list_providers()]
+    """List available provider × model combinations."""
+    return [
+        {
+            "provider": p.provider,
+            "model_id": p.model_id,
+            "label": p.label,
+            "configured": p.configured,
+        }
+        for p in list_providers()
+    ]
 
 
 @app.post("/api/optimize", response_model=OptimizeResponse)
 async def optimize_prompt(req: OptimizeRequest):
-    """Optimize a prompt using the configured or requested LLM provider."""
-    optimizer = _get_optimizer_safe(req.provider)
+    """Optimize a prompt."""
+    optimizer = _get_optimizer_safe(req.provider, req.model)
     if optimizer is None:
         provider = req.provider or os.getenv("LLM_PROVIDER", "claude")
         raise HTTPException(
@@ -72,10 +77,10 @@ async def optimize_prompt(req: OptimizeRequest):
 
 # --- Helpers ---
 
-def _get_optimizer_safe(provider: str | None = None):
+def _get_optimizer_safe(provider: str | None = None, model: str | None = None):
     """Try to create an optimizer; return None if not configured."""
     try:
-        return get_optimizer(provider)
+        return get_optimizer(provider, model)
     except (ValueError, KeyError):
         return None
 
