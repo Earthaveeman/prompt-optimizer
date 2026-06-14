@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>提示词优化器</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>✨ 提示词优化器</h1>
+        <p class="subtitle">输入你的原始提示词，AI 自动优化结构和表述</p>
+        <div class="header-row">
+            <label class="provider-label">
+                模型：
+                <select id="provider-select" class="provider-select">
+                    <option value="">加载中...</option>
+                </select>
+            </label>
+            <span id="provider-status" class="provider-status"></span>
+        </div>
+    </header>
+
+    <main>
+        <div class="panel input-panel">
+            <div class="panel-header">
+                <label for="input-text">📝 原始提示词</label>
+                <button class="btn-sm" id="clear-btn" title="清空">清空</button>
+            </div>
+            <textarea
+                id="input-text"
+                placeholder="在这里输入你的提示词...&#10;&#10;例如：帮我写一份产品需求文档"
+                autofocus
+            ></textarea>
+            <div class="input-footer">
+                <span id="char-count">0 / 10000</span>
+            </div>
+        </div>
+
+        <div class="center-col">
+            <button id="optimize-btn" class="btn-primary">
+                <span class="btn-text">⚡ 优化</span>
+                <span class="btn-loading" hidden>⏳ 优化中...</span>
+            </button>
+            <div id="error-msg" class="error-msg" hidden></div>
+        </div>
+
+        <div class="panel output-panel">
+            <div class="panel-header">
+                <label for="output-text">✅ 优化结果（可编辑）</label>
+                <button class="btn-sm" id="copy-btn" title="复制结果" disabled>📋 复制</button>
+            </div>
+            <textarea
+                id="output-text"
+                placeholder="优化后的提示词将在这里显示..."
+            ></textarea>
+            <div class="output-footer">
+                <span id="copy-feedback" class="copy-feedback" hidden>已复制到剪贴板 ✓</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const inputEl = document.getElementById('input-text');
+        const outputEl = document.getElementById('output-text');
+        const optimizeBtn = document.getElementById('optimize-btn');
+        const btnText = optimizeBtn.querySelector('.btn-text');
+        const btnLoading = optimizeBtn.querySelector('.btn-loading');
+        const errorMsg = document.getElementById('error-msg');
+        const copyBtn = document.getElementById('copy-btn');
+        const copyFeedback = document.getElementById('copy-feedback');
+        const clearBtn = document.getElementById('clear-btn');
+        const charCount = document.getElementById('char-count');
+        const providerSelect = document.getElementById('provider-select');
+        const providerStatus = document.getElementById('provider-status');
+
+        let currentProvider = null;
+
+        // --- Load providers on startup ---
+        async function loadProviders() {
+            try {
+                const res = await fetch('/api/providers');
+                const providers = await res.json();
+                providerSelect.innerHTML = '';
+
+                let firstAvailable = null;
+                providers.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.key;
+                    opt.textContent = p.label + (p.configured ? '' : '（未配置）');
+                    opt.disabled = !p.configured;
+                    providerSelect.appendChild(opt);
+                    if (p.configured && !firstAvailable) firstAvailable = p.key;
+                });
+
+                if (firstAvailable) {
+                    providerSelect.value = firstAvailable;
+                    currentProvider = firstAvailable;
+                    updateProviderStatus(providers.find(p => p.key === firstAvailable));
+                } else {
+                    providerStatus.textContent = '⚠ 无可用模型，请配置 API Key';
+                    providerStatus.className = 'provider-status error';
+                }
+            } catch (e) {
+                providerStatus.textContent = '⚠ 加载模型列表失败';
+                providerStatus.className = 'provider-status error';
+            }
+        }
+
+        function updateProviderStatus(p) {
+            if (p && p.configured) {
+                providerStatus.textContent = '✓ 已就绪';
+                providerStatus.className = 'provider-status ok';
+                currentProvider = p.key;
+            }
+        }
+
+        providerSelect.addEventListener('change', () => {
+            currentProvider = providerSelect.value;
+            const selectedOpt = providerSelect.selectedOptions[0];
+            providerStatus.textContent = currentProvider ? '✓ 已就绪' : '';
+            providerStatus.className = currentProvider ? 'provider-status ok' : 'provider-status';
+        });
+
+        // --- Character counter ---
+        inputEl.addEventListener('input', () => {
+            charCount.textContent = `${inputEl.value.length} / 10000`;
+        });
+
+        // --- Clear ---
+        clearBtn.addEventListener('click', () => {
+            inputEl.value = '';
+            charCount.textContent = '0 / 10000';
+            inputEl.focus();
+        });
+
+        // --- Optimize ---
+        optimizeBtn.addEventListener('click', async () => {
+            const text = inputEl.value.trim();
+            if (!text) {
+                showError('请输入需要优化的提示词');
+                return;
+            }
+
+            setLoading(true);
+            hideError();
+
+            try {
+                const body = { text };
+                if (currentProvider) body.provider = currentProvider;
+
+                const res = await fetch('/api/optimize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                outputEl.value = data.optimized;
+                outputEl.classList.remove('output-placeholder');
+                copyBtn.disabled = false;
+
+                // Update provider status from response
+                providerStatus.textContent = '✓ ' + data.provider;
+                providerStatus.className = 'provider-status ok';
+            } catch (e) {
+                showError(e.message || '优化失败，请检查网络和配置');
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        // --- Copy ---
+        copyBtn.addEventListener('click', async () => {
+            const text = outputEl.value;
+            if (!text) return;
+
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            copyFeedback.hidden = false;
+            setTimeout(() => { copyFeedback.hidden = true; }, 2000);
+        });
+
+        // --- Keyboard shortcuts ---
+        inputEl.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                optimizeBtn.click();
+            }
+        });
+
+        function setLoading(loading) {
+            optimizeBtn.disabled = loading;
+            btnText.hidden = loading;
+            btnLoading.hidden = !loading;
+        }
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.hidden = false;
+        }
+
+        function hideError() {
+            errorMsg.hidden = true;
+        }
+
+        // --- Init ---
+        loadProviders();
+    </script>
+</body>
+</html>
